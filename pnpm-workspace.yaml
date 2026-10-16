@@ -1,0 +1,4 @@
+# Standalone, this repository runs against core checked out into core/ (see README.md). Inside an
+# edition that holds it as a submodule, the edition's workspace is the one pnpm uses.
+packages:
+  - core/apps/orchestrator

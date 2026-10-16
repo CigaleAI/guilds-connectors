@@ -1,0 +1,33 @@
+{
+  "name": "@guildsrun/connectors",
+  "license": "AGPL-3.0-only",
+  "private": true,
+  "type": "module",
+  "description": "The connectors and recipes published at registry.guilds.run, and the check every one of them passes.",
+  "engines": {
+    "node": "^24"
+  },
+  "exports": {
+    "./build.js": "./scripts/build.ts"
+  },
+  "scripts": {
+    "check": "tsx scripts/build.ts .",
+    "test": "node --import tsx --test test/*.test.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint connectors scripts test"
+  },
+  "dependencies": {
+    "@guildsrun/orchestrator": "workspace:*",
+    "@solana/web3.js": "1.98.4",
+    "bs58": "6.0.0",
+    "viem": "2.37.9"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.5.1",
+    "eslint": "^10.10.0",
+    "tsx": "^4.23.13",
+    "typescript": "^5.9.2",
+    "typescript-eslint": "^8.70.0"
+  }
+}

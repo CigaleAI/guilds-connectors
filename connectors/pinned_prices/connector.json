@@ -1,0 +1,59 @@
+{
+  "slug": "pinned_prices",
+  "display_name": "Pinned prices",
+  "auth": {
+    "kind": "token",
+    "fields": [
+      {
+        "name": "token",
+        "label": "CoinGecko Pro API key",
+        "secret": true
+      }
+    ]
+  },
+  "description": "Pin CoinGecko coins into every run's State. Connect with a CoinGecko Pro API key and a ticker list.",
+  "limitations": "Quotes USD price and 24h change at run start. Not a trading venue and not CoinGecko's on-demand tools.",
+  "setup_hint": "Connect with a CoinGecko Pro API key, then search coins to pin.",
+  "state": {
+    "key": "prices",
+    "intro": "`prices` lists the coins the operator pinned for this agent with their CoinGecko USD price fetched at run start: `usd`, `change_24h_pct`, and `updated_at` (ISO-8601, CoinGecko's last update). Use those values as reference prices without a tool call. An entry with `unavailable` has no price this run; the value says why."
+  },
+  "settings_schema": {
+    "type": "object",
+    "properties": {
+      "coins": {
+        "type": "array",
+        "title": "Pinned coins",
+        "x-lookup": true,
+        "minItems": 1,
+        "maxItems": 20,
+        "description": "Their USD price enters State at every run start for agents using this login.",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9._-]{0,99}$"
+            },
+            "symbol": {
+              "type": "string",
+              "maxLength": 32
+            },
+            "name": {
+              "type": "string",
+              "maxLength": 100
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "additionalProperties": false
+        }
+      }
+    },
+    "required": [
+      "coins"
+    ],
+    "additionalProperties": false
+  }
+}

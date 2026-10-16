@@ -1,0 +1,8 @@
+{
+  "slug": "deepwiki",
+  "display_name": "DeepWiki",
+  "endpoint": { "url": "https://mcp.deepwiki.com/mcp" },
+  "auth": { "kind": "none" },
+  "description": "Documentation generated from public GitHub repositories: a repository's wiki structure, its pages, and answers to questions about it.",
+  "limitations": "Public repositories only."
+}

@@ -1,0 +1,532 @@
+{
+  "slug": "wallet",
+  "display_name": "Wallet",
+  "auth": {
+    "kind": "token",
+    "fields": [
+      {
+        "name": "evm_private_key",
+        "label": "EVM private key",
+        "secret": true
+      },
+      {
+        "name": "solana_private_key",
+        "label": "Solana private key",
+        "secret": true,
+        "placeholder": "base58 or [byte, array]"
+      },
+      {
+        "name": "alchemy_key",
+        "label": "Alchemy API key",
+        "secret": true
+      },
+      {
+        "name": "opensea_key",
+        "label": "OpenSea API key",
+        "secret": true
+      },
+      {
+        "name": "uniswap_key",
+        "label": "Uniswap API key",
+        "secret": true,
+        "optional": true,
+        "placeholder": "optional — developers.uniswap.org"
+      }
+    ]
+  },
+  "description": "Agent wallet balances, transfers, swaps, and OpenSea listings from orchestrator-held keys.",
+  "limitations": "Spend tools are default Off. Uniswap swaps need a Uniswap API key. Keys never enter the sandbox. Not a general exchange connector.",
+  "setup_hint": "Connect with EVM and Solana keys plus Alchemy and OpenSea API keys. A Uniswap API key is optional and enables Uniswap swaps.",
+  "tools": [
+    {
+      "name": "get_address",
+      "description": "The agent wallet address. chain is ethereum, polygon, base, arbitrum, bsc, optimism, ink, robinhood, hyperevm, arc, solana.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "chain": {
+            "type": "string",
+            "enum": [
+              "ethereum",
+              "polygon",
+              "base",
+              "arbitrum",
+              "bsc",
+              "optimism",
+              "ink",
+              "robinhood",
+              "hyperevm",
+              "arc",
+              "solana"
+            ]
+          }
+        },
+        "required": [
+          "chain"
+        ]
+      }
+    },
+    {
+      "name": "get_balance",
+      "description": "The agent wallet's balance on ethereum, polygon, base, arbitrum, bsc, optimism, ink, robinhood, hyperevm, arc, solana. Omit token for the native coin (ETH, BNB, POL, HYPE, SOL, or USDC on arc).",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "chain": {
+            "type": "string",
+            "enum": [
+              "ethereum",
+              "polygon",
+              "base",
+              "arbitrum",
+              "bsc",
+              "optimism",
+              "ink",
+              "robinhood",
+              "hyperevm",
+              "arc",
+              "solana"
+            ]
+          },
+          "token": {
+            "type": "string",
+            "description": "Symbol like \"USDC\", or a raw contract address / mint."
+          }
+        },
+        "required": [
+          "chain"
+        ]
+      }
+    },
+    {
+      "name": "send",
+      "description": "Send funds from the agent wallet on ethereum, polygon, base, arbitrum, bsc, optimism, ink, robinhood, hyperevm, arc, solana. Amount is in human units (\"0.5\"), never wei or lamports. Omit token to send the native coin. Returns a transaction hash and explorer link.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "chain": {
+            "type": "string",
+            "enum": [
+              "ethereum",
+              "polygon",
+              "base",
+              "arbitrum",
+              "bsc",
+              "optimism",
+              "ink",
+              "robinhood",
+              "hyperevm",
+              "arc",
+              "solana"
+            ]
+          },
+          "to": {
+            "type": "string",
+            "description": "Recipient: 0x... for EVM, base58 for Solana."
+          },
+          "amount": {
+            "type": "string",
+            "description": "Human units, e.g. \"0.5\" or \"25\"."
+          },
+          "token": {
+            "type": "string",
+            "description": "Symbol like \"USDC\", or a raw contract address / mint."
+          }
+        },
+        "required": [
+          "chain",
+          "to",
+          "amount"
+        ]
+      },
+      "mutating": true
+    },
+    {
+      "name": "call",
+      "description": "Call a contract from the agent wallet. chain is any EVM chain. data is 0x-prefixed calldata. value is the native coin in human units, default 0. Returns a transaction hash and explorer link.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "chain": {
+            "type": "string",
+            "enum": [
+              "ethereum",
+              "polygon",
+              "base",
+              "arbitrum",
+              "bsc",
+              "optimism",
+              "ink",
+              "robinhood",
+              "hyperevm",
+              "arc"
+            ]
+          },
+          "to": {
+            "type": "string",
+            "description": "Contract address."
+          },
+          "data": {
+            "type": "string",
+            "description": "0x-prefixed calldata."
+          },
+          "value": {
+            "type": "string",
+            "description": "Native coin in human units, e.g. \"0.05\". Default 0."
+          }
+        },
+        "required": [
+          "chain",
+          "to",
+          "data"
+        ]
+      },
+      "mutating": true
+    },
+    {
+      "name": "submit",
+      "description": "Sign and send a prebuilt Solana transaction. transaction is standard base64, as returned by Jupiter or similar. Returns a signature and explorer link.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "transaction": {
+            "type": "string",
+            "description": "Base64-encoded Solana transaction."
+          }
+        },
+        "required": [
+          "transaction"
+        ]
+      },
+      "mutating": true
+    },
+    {
+      "name": "swap",
+      "description": "Buy or sell a token on a DEX. chain is ethereum, polygon, base, arbitrum, bsc, optimism, ink, robinhood, hyperevm, arc, solana. amount is human units of the sell asset. Omit sell for the native coin. buy is a symbol or contract / mint. slippage is a percent, default 1. Solana routes through Jupiter; arbitrum, base, bsc, ethereum, hyperevm, optimism, polygon, robinhood through a DEX aggregator.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "chain": {
+            "type": "string",
+            "enum": [
+              "ethereum",
+              "polygon",
+              "base",
+              "arbitrum",
+              "bsc",
+              "optimism",
+              "ink",
+              "robinhood",
+              "hyperevm",
+              "arc",
+              "solana"
+            ]
+          },
+          "buy": {
+            "type": "string",
+            "description": "Token to buy: \"USDC\", a contract, a mint, or \"ETH\"/\"SOL\"."
+          },
+          "amount": {
+            "type": "string",
+            "description": "Human units of the sell asset, e.g. \"0.1\"."
+          },
+          "sell": {
+            "type": "string",
+            "description": "Token to sell. Omit for the native coin."
+          },
+          "slippage": {
+            "type": "string",
+            "description": "Percent, e.g. \"1\" or \"0.5\". Default 1."
+          }
+        },
+        "required": [
+          "chain",
+          "buy",
+          "amount"
+        ]
+      },
+      "mutating": true
+    },
+    {
+      "name": "uniswap_swap",
+      "description": "Buy or sell a token on Uniswap (v2, v3, or v4). Requires a Uniswap API key. chain is arbitrum, arc, base, bsc, ethereum, ink, optimism, polygon, robinhood. amount is human units of the sell asset. Omit sell for the native coin. buy is a symbol or contract. slippage is a percent, default 1. Returns a transaction hash and explorer link.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "chain": {
+            "type": "string",
+            "enum": [
+              "arbitrum",
+              "arc",
+              "base",
+              "bsc",
+              "ethereum",
+              "ink",
+              "optimism",
+              "polygon",
+              "robinhood"
+            ]
+          },
+          "buy": {
+            "type": "string",
+            "description": "Token to buy: \"USDC\", a contract, or \"ETH\"."
+          },
+          "amount": {
+            "type": "string",
+            "description": "Human units of the sell asset, e.g. \"0.1\"."
+          },
+          "sell": {
+            "type": "string",
+            "description": "Token to sell. Omit for the native coin."
+          },
+          "slippage": {
+            "type": "string",
+            "description": "Percent, e.g. \"1\" or \"0.5\". Default 1."
+          }
+        },
+        "required": [
+          "chain",
+          "buy",
+          "amount"
+        ]
+      },
+      "mutating": true
+    },
+    {
+      "name": "opensea_buy",
+      "description": "Buy an NFT listed on OpenSea. OpenSea only, and EVM only (never Solana): arbitrum, arc, base, bsc, ethereum, hyperevm, ink, optimism, polygon, robinhood. Requires an OpenSea API key. Omit token_id to buy the cheapest listing on a collection floor (slug, or contract). Pass contract and token_id to buy that NFT. Pays in the listing's own currency, native or ERC-20, approving the token first when needed. Returns a transaction hash and explorer link.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "chain": {
+            "type": "string",
+            "enum": [
+              "arbitrum",
+              "arc",
+              "base",
+              "bsc",
+              "ethereum",
+              "hyperevm",
+              "ink",
+              "optimism",
+              "polygon",
+              "robinhood"
+            ]
+          },
+          "slug": {
+            "type": "string",
+            "description": "OpenSea collection slug, e.g. \"boredapeyachtclub\"."
+          },
+          "contract": {
+            "type": "string",
+            "description": "NFT contract address. With token_id, buys that NFT. Without token_id, buys the collection floor."
+          },
+          "token_id": {
+            "type": "string",
+            "description": "Token id. Omit to buy the collection floor."
+          }
+        },
+        "required": [
+          "chain"
+        ]
+      },
+      "mutating": true
+    },
+    {
+      "name": "opensea_list",
+      "description": "List an NFT the agent wallet owns for sale on OpenSea. OpenSea only, and EVM only (never Solana): arbitrum, arc, base, bsc, ethereum, hyperevm, ink, optimism, polygon, robinhood. Requires an OpenSea API key. price is human units of the payment currency (\"0.5\"). This signs a Seaport order rather than sending a transaction, so it returns an order hash, not a transaction hash. One approval transaction is sent the first time a given collection is listed. The listing is binding until it expires or is cancelled with opensea_cancel_order.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "chain": {
+            "type": "string",
+            "enum": [
+              "arbitrum",
+              "arc",
+              "base",
+              "bsc",
+              "ethereum",
+              "hyperevm",
+              "ink",
+              "optimism",
+              "polygon",
+              "robinhood"
+            ]
+          },
+          "contract": {
+            "type": "string",
+            "description": "NFT contract address."
+          },
+          "token_id": {
+            "type": "string",
+            "description": "Token id."
+          },
+          "price": {
+            "type": "string",
+            "description": "Total asking price in human units, e.g. \"0.5\"."
+          },
+          "currency": {
+            "type": "string",
+            "description": "Omit for the native coin. Otherwise a known symbol (\"WETH\", \"USDC\"), or any ERC-20 contract address (e.g. a USDG-priced listing on robinhood). Decimals are read from the contract."
+          },
+          "duration_days": {
+            "type": "string",
+            "description": "How long the listing stays live. Default 7, max 30."
+          },
+          "quantity": {
+            "type": "string",
+            "description": "ERC-1155 units to sell. Default 1."
+          },
+          "include_optional_fees": {
+            "type": "string",
+            "description": "\"true\" to also pay optional creator fees. Default false."
+          }
+        },
+        "required": [
+          "chain",
+          "contract",
+          "token_id",
+          "price"
+        ]
+      },
+      "mutating": true
+    },
+    {
+      "name": "opensea_accept_offer",
+      "description": "Accept the highest active OpenSea offer on an NFT the agent wallet owns. OpenSea only, and EVM only (never Solana): arbitrum, arc, base, bsc, ethereum, hyperevm, ink, optimism, polygon, robinhood. Requires an OpenSea API key. Picks the best offer automatically, including collection-wide offers. Proceeds arrive as WETH, not the native coin. Sends one approval transaction the first time a given collection is sold from. Returns a transaction hash and explorer link.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "chain": {
+            "type": "string",
+            "enum": [
+              "arbitrum",
+              "arc",
+              "base",
+              "bsc",
+              "ethereum",
+              "hyperevm",
+              "ink",
+              "optimism",
+              "polygon",
+              "robinhood"
+            ]
+          },
+          "contract": {
+            "type": "string",
+            "description": "NFT contract address."
+          },
+          "token_id": {
+            "type": "string",
+            "description": "Token id."
+          },
+          "min_price": {
+            "type": "string",
+            "description": "Refuse to accept below this, in human units of the offer currency. Strongly recommended."
+          },
+          "include_optional_fees": {
+            "type": "string",
+            "description": "\"true\" to also pay optional creator fees. Default false."
+          }
+        },
+        "required": [
+          "chain",
+          "contract",
+          "token_id"
+        ]
+      },
+      "mutating": true
+    },
+    {
+      "name": "opensea_collection_offer",
+      "description": "Place a collection-wide bid on OpenSea: an offer any holder in the collection can fill. OpenSea only, and EVM only (never Solana): arbitrum, arc, base, bsc, ethereum, hyperevm, ink, optimism, polygon, robinhood. Requires an OpenSea API key. slug is the OpenSea collection slug, the last path segment of the collection URL. price is per NFT in human units of currency, which defaults to WETH and must already be held unless wrap is true. This signs a Seaport order rather than sending a transaction, so it returns an order hash. The bid is binding until it expires or is cancelled with opensea_cancel_order.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "chain": {
+            "type": "string",
+            "enum": [
+              "arbitrum",
+              "arc",
+              "base",
+              "bsc",
+              "ethereum",
+              "hyperevm",
+              "ink",
+              "optimism",
+              "polygon",
+              "robinhood"
+            ]
+          },
+          "slug": {
+            "type": "string",
+            "description": "OpenSea collection slug, e.g. \"boredapeyachtclub\"."
+          },
+          "price": {
+            "type": "string",
+            "description": "Per NFT in human units of currency, e.g. \"1.25\"."
+          },
+          "currency": {
+            "type": "string",
+            "description": "ERC-20 to bid with: a symbol or a contract address. Defaults to WETH where one is known. Bids can never be the native coin."
+          },
+          "quantity": {
+            "type": "string",
+            "description": "How many NFTs the bid covers. Default 1."
+          },
+          "duration_days": {
+            "type": "string",
+            "description": "How long the bid stays live. Default 7, max 30."
+          },
+          "wrap": {
+            "type": "string",
+            "description": "\"true\" to wrap enough native coin into WETH first. Default false."
+          },
+          "include_optional_fees": {
+            "type": "string",
+            "description": "\"true\" to also pay optional creator fees. Default false."
+          }
+        },
+        "required": [
+          "chain",
+          "slug",
+          "price"
+        ]
+      },
+      "mutating": true
+    },
+    {
+      "name": "opensea_cancel_order",
+      "description": "Cancel an OpenSea listing or offer the agent wallet signed, by order hash. OpenSea only, and EVM only (never Solana): arbitrum, arc, base, bsc, ethereum, hyperevm, ink, optimism, polygon, robinhood. This is an on-chain cancellation and costs gas. Returns a transaction hash and explorer link.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "chain": {
+            "type": "string",
+            "enum": [
+              "arbitrum",
+              "arc",
+              "base",
+              "bsc",
+              "ethereum",
+              "hyperevm",
+              "ink",
+              "optimism",
+              "polygon",
+              "robinhood"
+            ]
+          },
+          "order_hash": {
+            "type": "string",
+            "description": "Order hash returned by opensea_list or opensea_collection_offer."
+          }
+        },
+        "required": [
+          "chain",
+          "order_hash"
+        ]
+      },
+      "mutating": true
+    }
+  ]
+}

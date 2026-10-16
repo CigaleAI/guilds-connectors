@@ -1,0 +1,8 @@
+{
+  "slug": "linear",
+  "display_name": "Linear",
+  "endpoint": { "url": "https://mcp.linear.app/mcp" },
+  "auth": { "kind": "oauth", "oauth": { "strategy": "dynamic" } },
+  "description": "Issues, projects, and comments in a Linear workspace.",
+  "policy": { "default_off": ["create_*", "update_*", "delete_*"] }
+}
