@@ -51,7 +51,8 @@ A change to a published connector bumps its `version`.
 
 ## Verification
 
-A merged connector is published as unverified. A box installs an
+A merged connector is published, unverified, the next time Guilds
+publishes the registry. A box installs an
 unverified endpoint-only connector when its admin accepts that. A
 connector with code is listed but does not install until verified.
 
