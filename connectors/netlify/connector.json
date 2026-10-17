@@ -1,0 +1,85 @@
+{
+  "slug": "netlify",
+  "display_name": "Netlify",
+  "auth": {
+    "kind": "token",
+    "fields": [{ "name": "token", "label": "Netlify personal access token", "secret": true }]
+  },
+  "description": "Publish a folder of built static files from the agent's workspace to a Netlify site: first as a draft with a URL of its own, then live once published.",
+  "limitations": "Static files only, built beforehand: Netlify runs no build and no Netlify Functions for them. Deploys only to the sites the login's settings pick. Netlify allows 3 deploys a minute and 100 a day.",
+  "setup_hint": "Create a personal access token under Netlify → User settings → Applications, then pick the sites agents may deploy to. The token reaches every site of the account, so a team of its own for agents is safest.",
+  "settings_schema": {
+    "type": "object",
+    "properties": {
+      "sites": {
+        "type": "array",
+        "title": "Sites",
+        "x-lookup": true,
+        "minItems": 1,
+        "maxItems": 20,
+        "description": "The Netlify sites agents using this login may deploy to.",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "string", "pattern": "^[A-Za-z0-9-]{1,100}$" },
+            "name": { "type": "string", "maxLength": 100 },
+            "url": { "type": "string", "maxLength": 300 }
+          },
+          "required": ["id"],
+          "additionalProperties": false
+        }
+      }
+    },
+    "required": ["sites"],
+    "additionalProperties": false
+  },
+  "tools": [
+    {
+      "name": "sites",
+      "description": "The Netlify sites this login may deploy to, each with its live URL and the deploy it serves.",
+      "input_schema": { "type": "object", "properties": {}, "additionalProperties": false }
+    },
+    {
+      "name": "deploy",
+      "description": "Upload a folder of built static files from the workspace to a site as a draft. The draft gets a URL of its own and the live site does not change. Build first: the folder is served exactly as it is, with index.html at its root, and _redirects and _headers files are honoured.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "site": { "type": "string", "description": "The site's name or id, one of those the sites tool lists." },
+          "folder_path": { "type": "string", "description": "The folder to publish, under the agent's home, such as dist or /home/<agent>/app/dist." },
+          "title": { "type": "string", "maxLength": 200, "description": "A short note on what this deploy holds, shown in Netlify." }
+        },
+        "required": ["site", "folder_path"],
+        "additionalProperties": false
+      },
+      "mutating": true
+    },
+    {
+      "name": "deploy_status",
+      "description": "The state of one deploy: ready, still processing, or failed with Netlify's reason, with its draft URL.",
+      "input_schema": {
+        "type": "object",
+        "properties": { "deploy_id": { "type": "string" } },
+        "required": ["deploy_id"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "publish",
+      "description": "Make a ready deploy the one the site serves at its live URL: a draft goes live, or an earlier deploy comes back.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "site": { "type": "string", "description": "The site's name or id." },
+          "deploy_id": { "type": "string" }
+        },
+        "required": ["site", "deploy_id"],
+        "additionalProperties": false
+      },
+      "mutating": true
+    }
+  ],
+  "prompt": {
+    "guidance": "Netlify publishes static files only. Build the site in the workspace first, then deploy the output folder as a draft and check its draft URL. Publish it to the live URL only when the task asks for the site to go live."
+  }
+}
