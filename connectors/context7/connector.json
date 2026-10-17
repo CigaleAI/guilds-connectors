@@ -1,0 +1,7 @@
+{
+  "slug": "context7",
+  "display_name": "Context7",
+  "endpoint": { "url": "https://mcp.context7.com/mcp" },
+  "auth": { "kind": "none" },
+  "description": "Up-to-date documentation and code examples for libraries and frameworks, looked up by library name."
+}
