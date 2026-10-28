@@ -3,7 +3,8 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { CoinGeckoError } from "@guildsrun/orchestrator/connectors/coingecko/client.js";
-import { ConnectorRegistry, folderEntry } from "@guildsrun/orchestrator/connectors/registry.js";
+import { loadConnector } from "@guildsrun/orchestrator/connectors/load.js";
+import { ConnectorRegistry, folderEntry, type ConnectorEntry } from "@guildsrun/orchestrator/connectors/registry.js";
 import { ConnectorError } from "@guildsrun/orchestrator/connectors/types.js";
 import { decodeMasterKey } from "@guildsrun/orchestrator/config/index.js";
 import { encryptPayload } from "@guildsrun/orchestrator/credentials/crypto.js";
@@ -22,13 +23,35 @@ const FOLDER = fileURLToPath(new URL("../connectors/pinned_prices", import.meta.
 const MANIFEST: unknown = JSON.parse(readFileSync(`${FOLDER}/connector.json`, "utf8"));
 const ENTRY = folderEntry(MANIFEST, adapter, FOLDER, { publisher: "guilds" });
 const CONNECTORS = new ConnectorRegistry([ENTRY]);
-const SERVER = { id: "mcp_pinned_prices", slug: "pinned_prices", auth: "token" };
+const SERVER = installedServer(ENTRY);
 const KEY = decodeMasterKey(HEX_MASTER_KEY);
 const AGENT = { id: "agent_1", guild_id: "guild_1", org_id: "org_1" };
 const PINNED = [
   { id: "ethereum", symbol: "ETH", name: "Ethereum" },
   { id: "tesla-xstock", symbol: "TSLAX", name: "Tesla xStock" },
 ];
+
+/** The connector as `getMcpServer` loads it: the entry installed on the platform, with no overrides. */
+function installedServer(entry: ConnectorEntry) {
+  const stamp = "2026-10-12T09:00:00.000Z";
+  return loadConnector({
+    id: entry.id,
+    slug: entry.manifest.slug,
+    tool_prefix: entry.manifest.slug,
+    owner_org_id: null,
+    manifest: entry.manifest,
+    source: entry.source,
+    version: "",
+    verified: entry.verified,
+    experimental: false,
+    publisher: entry.publisher,
+    enabled: true,
+    oauth_client: null,
+    overrides: {},
+    installed_at: stamp,
+    updated_at: stamp,
+  });
+}
 
 function pool(connectors: ConnectorRegistry = CONNECTORS): McpPool {
   const built = new McpPool();
@@ -50,9 +73,9 @@ function stateDb(connection: Record<string, unknown>, options: { serverOff?: boo
     ],
     listAgentSecrets: async () => [],
     listMcpServers: async () => [SERVER],
-    listMcpConnections: async () => [{ id: "conn_pins", status: "connected", ...connection }],
+    listMcpConnections: async () => [{ id: "conn_pins", status: "connected", settings: {}, ...connection }],
     listMcpTools: async () => [],
-  };
+  } as never;
 }
 
 function sealed(token: string) {
