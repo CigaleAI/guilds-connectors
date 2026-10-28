@@ -3,7 +3,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { endpointOnlyProblem, loadManifest } from "@guildsrun/orchestrator/connectors/manifest.js";
-import { parseRecipe } from "@guildsrun/orchestrator/recipes/schema.js";
+import { parseRecipe } from "@guildsrun/orchestrator/recipes/parse.js";
 import { codeManifestProblem } from "@guildsrun/orchestrator/registry/client.js";
 import { parseIndex, type RegistryIndex } from "@guildsrun/orchestrator/registry/index.js";
 import { packTarball } from "@guildsrun/orchestrator/registry/tar.js";
