@@ -3,14 +3,18 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { CoinGeckoError } from "@guildsrun/orchestrator/connectors/coingecko/client.js";
-import { loadConnector } from "@guildsrun/orchestrator/connectors/load.js";
+import { loadConnector } from "@guildsrun/orchestrator/connectors/servers.js";
 import { ConnectorRegistry, folderEntry, type ConnectorEntry } from "@guildsrun/orchestrator/connectors/registry.js";
 import { ConnectorError } from "@guildsrun/orchestrator/connectors/types.js";
 import { decodeMasterKey } from "@guildsrun/orchestrator/config/index.js";
 import { encryptPayload } from "@guildsrun/orchestrator/credentials/crypto.js";
-import { McpError, McpPool } from "@guildsrun/orchestrator/mcp/index.js";
+import type { McpConnectionRow } from "@guildsrun/orchestrator/db/mcp.js";
+import { McpError } from "@guildsrun/orchestrator/mcp/errors.js";
+import { McpPool, type ConnectorLogin } from "@guildsrun/orchestrator/mcp/pool.js";
 import { HEX_MASTER_KEY } from "@guildsrun/orchestrator/test/helpers/env.js";
 import { mockFetch } from "@guildsrun/orchestrator/test/helpers/http.js";
+import { restoreConnectorsAfterEach, runConnectors } from "@guildsrun/orchestrator/test/helpers/installed.js";
+import { MemoryMcpDatabase } from "@guildsrun/orchestrator/test/helpers/mcp-database.js";
 import adapter from "../connectors/pinned_prices/adapter.js";
 import {
   PINNED_PRICES_MAX,
@@ -21,11 +25,10 @@ import {
 
 const FOLDER = fileURLToPath(new URL("../connectors/pinned_prices", import.meta.url));
 const MANIFEST: unknown = JSON.parse(readFileSync(`${FOLDER}/connector.json`, "utf8"));
-const ENTRY = folderEntry(MANIFEST, adapter, FOLDER, { publisher: "guilds" });
+const ENTRY = folderEntry(MANIFEST, adapter, FOLDER, "guilds");
 const CONNECTORS = new ConnectorRegistry([ENTRY]);
 const SERVER = installedServer(ENTRY);
 const KEY = decodeMasterKey(HEX_MASTER_KEY);
-const AGENT = { id: "agent_1", guild_id: "guild_1", org_id: "org_1" };
 const PINNED = [
   { id: "ethereum", symbol: "ETH", name: "Ethereum" },
   { id: "tesla-xstock", symbol: "TSLAX", name: "Tesla xStock" },
@@ -53,29 +56,36 @@ function installedServer(entry: ConnectorEntry) {
   });
 }
 
+restoreConnectorsAfterEach();
+
+/** A pool on a box that runs `connectors`, with nothing stored. */
 function pool(connectors: ConnectorRegistry = CONNECTORS): McpPool {
-  const built = new McpPool();
-  built.connectors = connectors;
-  return built;
+  runConnectors(connectors);
+  return new McpPool(new MemoryMcpDatabase());
 }
 
-function stateDb(connection: Record<string, unknown>, options: { serverOff?: boolean } = {}) {
-  return {
-    listBindingsCovering: async () => [
-      {
-        catalog_kind: "mcp",
-        catalog_id: "mcp_pinned_prices",
-        scope: "org",
-        scope_id: "org_1",
-        enabled: !options.serverOff,
-        connection_id: "conn_pins",
+/** An agent's one login: a token login to Pinned prices, with `connection` over it. */
+function stateLogins(connection: Partial<McpConnectionRow> & Pick<McpConnectionRow, "ciphertext" | "nonce">): ConnectorLogin[] {
+  const stamp = "2026-10-12T09:00:00.000Z";
+  return [
+    {
+      connection: {
+        id: "conn_pins",
+        mcp_server_id: SERVER.id,
+        owner_scope: "org",
+        owner_id: "org_1",
+        account_hint: "",
+        status: "connected",
+        oauth_state: null,
+        settings: {},
+        created_at: stamp,
+        updated_at: stamp,
+        rotated_at: stamp,
+        ...connection,
       },
-    ],
-    listAgentSecrets: async () => [],
-    listMcpServers: async () => [SERVER],
-    listMcpConnections: async () => [{ id: "conn_pins", status: "connected", settings: {}, ...connection }],
-    listMcpTools: async () => [],
-  } as never;
+      server: SERVER,
+    },
+  ];
 }
 
 function sealed(token: string) {
@@ -200,12 +210,12 @@ test("lookup searches CoinGecko coins with the form's credentials", async () => 
       },
     };
   });
-  assert.deepEqual(await prices.lookup(SERVER, "coins", "eth", { token: "cg" }), [
+  assert.deepEqual(await prices.lookup(SERVER, { property: "coins", q: "eth" }, { token: "cg" }), [
     { value: { id: "ethereum", symbol: "ETH", name: "Ethereum" }, label: "Ethereum (ETH)", detail: "#2", image: "t.png" },
     { value: { id: "ethereum-classic", symbol: "ETC", name: "Ethereum Classic" }, label: "Ethereum Classic (ETC)" },
   ]);
   await assert.rejects(
-    () => prices.lookup(SERVER, "chains", "eth", { token: "cg" }),
+    () => prices.lookup(SERVER, { property: "chains", q: "eth" }, { token: "cg" }),
     (error: unknown) => error instanceof McpError && error.status === 404,
   );
 });
@@ -221,7 +231,7 @@ test("state quotes the login's pinned coins under the manifest's key", async () 
       json: { ethereum: { usd: 3200, usd_24h_change: 1, last_updated_at: 1_790_000_000 } },
     };
   });
-  const state = await prices.state(stateDb({ ...sealed("cg-secret"), settings: { coins: PINNED } }), AGENT);
+  const state = await prices.state(stateLogins({ ...sealed("cg-secret"), settings: { coins: PINNED } }));
   assert.equal(ids, "ethereum,tesla-xstock");
   assert.deepEqual(state, {
     prices: [
@@ -238,23 +248,15 @@ test("state quotes the login's pinned coins under the manifest's key", async () 
   });
 });
 
-test("state leaves out a login with no pins, one that is off, and redacts the key", async () => {
+test("state leaves out a login with no pins and redacts the key", async () => {
   process.env.SECRETS_MASTER_KEY = HEX_MASTER_KEY;
   const prices = pool();
   prices.fetchFn = mockFetch(() => {
     throw new Error("no pins must not fetch");
   });
-  assert.deepEqual(await prices.state(stateDb(sealed("cg")), AGENT), {});
-  assert.deepEqual(
-    await prices.state(stateDb({ ...sealed("cg"), settings: { coins: PINNED } }, { serverOff: true }), AGENT),
-    {},
-  );
-  assert.deepEqual(
-    await prices.state(stateDb({ ...sealed("cg"), status: "disconnected", settings: { coins: PINNED } }), AGENT),
-    {},
-  );
+  assert.deepEqual(await prices.state(stateLogins(sealed("cg"))), {});
   const leaky = pool(CONNECTORS.withAdapter("pinned_prices", { state: async (creds) => ({ leaked: creds.token }) }));
-  assert.deepEqual(await leaky.state(stateDb(sealed("cg-secret")), AGENT), {
+  assert.deepEqual(await leaky.state(stateLogins(sealed("cg-secret"))), {
     prices: { leaked: "[REDACTED:token]" },
   });
 });
@@ -268,7 +270,7 @@ test("state marks the prices unavailable when the hook fails", async () => {
       },
     }),
   );
-  assert.deepEqual(await failing.state(stateDb(sealed("cg")), AGENT), {
+  assert.deepEqual(await failing.state(stateLogins(sealed("cg"))), {
     prices: { unavailable: "quota exhausted" },
   });
 });

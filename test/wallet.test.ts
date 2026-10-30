@@ -5,14 +5,17 @@ import { fileURLToPath } from "node:url";
 import { Keypair, SystemProgram, TransactionMessage, VersionedTransaction } from "@solana/web3.js";
 import bs58 from "bs58";
 import { decodeMasterKey } from "@guildsrun/orchestrator/config/index.js";
-import { loadConnector } from "@guildsrun/orchestrator/connectors/load.js";
+import { loadConnector } from "@guildsrun/orchestrator/connectors/servers.js";
 import { ConnectorRegistry, folderEntry } from "@guildsrun/orchestrator/connectors/registry.js";
 import { ConnectorError } from "@guildsrun/orchestrator/connectors/types.js";
 import { encryptPayload } from "@guildsrun/orchestrator/credentials/crypto.js";
 import type { McpConnectionRow } from "@guildsrun/orchestrator/db/mcp.js";
-import { ListedTool, McpError, McpPool } from "@guildsrun/orchestrator/mcp/index.js";
+import { McpError } from "@guildsrun/orchestrator/mcp/errors.js";
+import { McpPool, OPERATOR_CALLER } from "@guildsrun/orchestrator/mcp/pool.js";
 import { HEX_MASTER_KEY } from "@guildsrun/orchestrator/test/helpers/env.js";
 import { mockFetch } from "@guildsrun/orchestrator/test/helpers/http.js";
+import { restoreConnectorsAfterEach, runConnectors } from "@guildsrun/orchestrator/test/helpers/installed.js";
+import { MemoryMcpDatabase } from "@guildsrun/orchestrator/test/helpers/mcp-database.js";
 import adapter from "../connectors/wallet/adapter.js";
 import {
   WalletError,
@@ -42,7 +45,7 @@ import {
 
 const FOLDER = fileURLToPath(new URL("../connectors/wallet", import.meta.url));
 const CONNECTORS = new ConnectorRegistry([
-  folderEntry(JSON.parse(readFileSync(`${FOLDER}/connector.json`, "utf8")), adapter, FOLDER, { publisher: "guilds" }),
+  folderEntry(JSON.parse(readFileSync(`${FOLDER}/connector.json`, "utf8")), adapter, FOLDER, "guilds"),
 ]);
 const MANIFEST = CONNECTORS.bySlug("wallet")!.manifest;
 const TOOLS = MANIFEST.tools!;
@@ -175,50 +178,7 @@ function signedVersionedTx(): string {
   return Buffer.from(tx.serialize()).toString("base64");
 }
 
-class MemoryDb {
-  rows: Array<Record<string, unknown>> = [];
-  bindings = new Map<string, Record<string, unknown>>();
-
-  async replaceMcpTools(_connectionId: string, tools: ListedTool[], _now: Date) {
-    this.rows = tools.map((tool) => ({
-      connection_id: _connectionId,
-      remote_name: tool.remote_name,
-      namespaced_name: tool.namespaced_name,
-      description: tool.description,
-      input_schema: tool.input_schema,
-    }));
-  }
-
-  async listMcpTools() {
-    return this.rows;
-  }
-
-  async insertBindingIfAbsent(input: {
-    bindingId: string;
-    catalogKind: string;
-    catalogId: string;
-    scope: string;
-    scopeId: string | null;
-    enabled: boolean;
-  }) {
-    const { bindingId, catalogKind, catalogId, scope, scopeId, enabled } = input;
-    const key = `${catalogKind}:${catalogId}:${scopeId}`;
-    const existing = this.bindings.get(key);
-    if (existing) {
-      return existing;
-    }
-    const row = {
-      id: bindingId,
-      catalog_kind: catalogKind,
-      catalog_id: catalogId,
-      scope,
-      scope_id: scopeId,
-      enabled,
-    };
-    this.bindings.set(key, row);
-    return row;
-  }
-}
+restoreConnectorsAfterEach();
 
 function walletConnection(extra: Record<string, string> = {}): McpConnectionRow {
   const [ciphertext, nonce] = encryptPayload(
@@ -1009,19 +969,19 @@ test("opensea buy requires opensea key", async () => {
 test("sync wallet writes catalog and send off", async () => {
   process.env.SECRETS_MASTER_KEY = HEX_MASTER_KEY;
   const pinged = { n: 0 };
-  const pool = new McpPool(10 * 60 * 1000);
-  pool.connectors = CONNECTORS.withAdapter("wallet", {
+  const db = new MemoryMcpDatabase();
+  const pool = new McpPool(db, 10 * 60 * 1000);
+  runConnectors(CONNECTORS.withAdapter("wallet", {
     async validate(stored) {
       pinged.n += 1;
       assert.equal(stored.alchemy_key, ALCHEMY);
       assert.equal(stored.opensea_key, OPENSEA);
       return "";
     },
-  });
-  const db = new MemoryDb();
+  }));
   const connection = walletConnection();
-  const first = await pool.syncTools(db as never, connection, SERVER, { force: true });
-  const second = await pool.syncTools(db as never, connection, SERVER);
+  const first = await pool.syncTools(connection, SERVER, { force: true });
+  const second = await pool.syncTools(connection, SERVER);
   assert.equal(pinged.n, 1);
   const expected = TOOLS.filter((spec) => spec.name !== "uniswap_swap");
   assert.deepEqual(
@@ -1032,9 +992,14 @@ test("sync wallet writes catalog and send off", async () => {
   assert.deepEqual(first, second);
   assert.deepEqual(
     first[0],
-    new ListedTool("get_address", "wallet_get_address", TOOLS[0]!.description, {
-      ...TOOLS[0]!.input_schema,
-    }),
+    {
+      remote_name: "get_address",
+      namespaced_name: "wallet_get_address",
+      description: TOOLS[0]!.description,
+      input_schema: TOOLS[0]!.input_schema,
+      read_only_hint: null,
+      destructive_hint: null,
+    },
   );
   for (const spec of expected) {
     if (!spec.mutating) {
@@ -1047,7 +1012,7 @@ test("sync wallet writes catalog and send off", async () => {
   assert.ok(sendRow);
   sendRow.enabled = true;
   pool.forget("conn_w");
-  await pool.syncTools(db as never, connection, SERVER);
+  await pool.syncTools(connection, SERVER);
   assert.equal(db.bindings.get("mcp_tool:wallet_send:guild_1")?.enabled, true);
   assert.equal(db.bindings.get("mcp_tool:wallet_swap:guild_1")?.enabled, false);
 });
@@ -1055,19 +1020,15 @@ test("sync wallet writes catalog and send off", async () => {
 test("sync wallet lists uniswap swap when keyed", async () => {
   process.env.SECRETS_MASTER_KEY = HEX_MASTER_KEY;
   const seen: Array<string | null | undefined> = [];
-  const pool = new McpPool(10 * 60 * 1000);
-  pool.connectors = CONNECTORS.withAdapter("wallet", {
+  const db = new MemoryMcpDatabase();
+  const pool = new McpPool(db, 10 * 60 * 1000);
+  runConnectors(CONNECTORS.withAdapter("wallet", {
     async validate(stored) {
       seen.push(stored.uniswap_key);
       return "";
     },
-  });
-  const db = new MemoryDb();
-  const first = await pool.syncTools(db as never,
-    walletConnection({ uniswap_key: UNISWAP }),
-    SERVER,
-    { force: true },
-  );
+  }));
+  const first = await pool.syncTools(walletConnection({ uniswap_key: UNISWAP }), SERVER, { force: true });
   assert.deepEqual(seen, [UNISWAP]);
   assert.ok(first.some((tool) => tool.remote_name === "uniswap_swap"));
   assert.equal(db.bindings.get("mcp_tool:wallet_uniswap_swap:guild_1")?.enabled, false);
@@ -1075,15 +1036,15 @@ test("sync wallet lists uniswap swap when keyed", async () => {
 
 test("sync wallet rejects bad key", async () => {
   process.env.SECRETS_MASTER_KEY = HEX_MASTER_KEY;
-  const pool = new McpPool();
-  pool.connectors = CONNECTORS.withAdapter("wallet", {
+  const pool = new McpPool(new MemoryMcpDatabase());
+  runConnectors(CONNECTORS.withAdapter("wallet", {
     async validate() {
       throw new ConnectorError("Alchemy API key was rejected", 401);
     },
-  });
+  }));
   await assert.rejects(
     () =>
-      pool.syncTools(new MemoryDb() as never, walletConnection(), SERVER, { force: true }),
+      pool.syncTools(walletConnection(), SERVER, { force: true }),
     (error: unknown) => error instanceof McpError && error.status === 401 && /rejected/.test(error.message),
   );
 });
@@ -1091,8 +1052,8 @@ test("sync wallet rejects bad key", async () => {
 test("call wallet dispatches", async () => {
   process.env.SECRETS_MASTER_KEY = HEX_MASTER_KEY;
   const seen: Record<string, unknown> = {};
-  const pool = new McpPool();
-  pool.connectors = CONNECTORS.withAdapter("wallet", {
+  const pool = new McpPool(new MemoryMcpDatabase());
+  runConnectors(CONNECTORS.withAdapter("wallet", {
     async call(name, arguments_, stored, ctx) {
       seen.name = name;
       seen.arguments = arguments_;
@@ -1101,13 +1062,12 @@ test("call wallet dispatches", async () => {
       seen.opensea = stored.opensea_key;
       return ANVIL_ADDR;
     },
+  }));
+  const stored = await pool.call(walletConnection(), SERVER, {
+    tool: "get_address",
+    arguments: { chain: "ethereum" },
+    caller: OPERATOR_CALLER,
   });
-  const stored = await pool.call(new MemoryDb() as never,
-    walletConnection(),
-    SERVER,
-    "get_address",
-    { chain: "ethereum" },
-  );
   assert.equal(stored, ANVIL_ADDR);
   assert.deepEqual(seen, {
     name: "get_address",
@@ -1119,8 +1079,8 @@ test("call wallet dispatches", async () => {
 });
 
 test("validate pings with the login's keys and translates a rejected key", async () => {
-  const pool = new McpPool();
-  pool.connectors = CONNECTORS;
+  const pool = new McpPool(new MemoryMcpDatabase());
+  runConnectors(CONNECTORS);
   const stored = {
     evm_private_key: ANVIL_KEY,
     solana_private_key: SOLANA_KEY,
@@ -1148,11 +1108,11 @@ test("validate pings with the login's keys and translates a rejected key", async
 
 test("call runs the wallet tool on the login's keys", async () => {
   process.env.SECRETS_MASTER_KEY = HEX_MASTER_KEY;
-  const pool = new McpPool();
-  pool.connectors = CONNECTORS;
-  assert.equal(await pool.call(new MemoryDb() as never, walletConnection(), SERVER, "get_address", { chain: "ethereum" }), ANVIL_ADDR);
+  const pool = new McpPool(new MemoryMcpDatabase());
+  runConnectors(CONNECTORS);
+  assert.equal(await pool.call(walletConnection(), SERVER, { tool: "get_address", arguments: { chain: "ethereum" }, caller: OPERATOR_CALLER }), ANVIL_ADDR);
   assert.equal(
-    await pool.call(new MemoryDb() as never, walletConnection(), SERVER, "get_address", { chain: "solana" }),
+    await pool.call(walletConnection(), SERVER, { tool: "get_address", arguments: { chain: "solana" }, caller: OPERATOR_CALLER }),
     SOLANA_KEYPAIR.publicKey.toBase58(),
   );
 });

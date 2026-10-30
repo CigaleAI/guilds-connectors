@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { parseRecipe } from "@guildsrun/orchestrator/recipes/parse.js";
 import { RegistryClient } from "@guildsrun/orchestrator/registry/client.js";
 import { buildRegistry, coreSlugs, sourceDigest } from "../scripts/build.js";
 
@@ -47,7 +48,7 @@ test("every connector and recipe in this repository builds, unverified, and core
     assert.equal(built.sources.get(`connectors/${entry.slug}`)?.version, entry.version);
   }
   for (const entry of (await client.index()).recipes) {
-    await client.recipe(entry);
+    parseRecipe(JSON.parse((await client.recipeFile(entry)).toString("utf8")));
   }
 });
 
