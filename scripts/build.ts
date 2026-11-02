@@ -154,7 +154,7 @@ export async function buildRegistry(root: string, options: { now?: Date } = {}):
       description: recipe.meta.description,
     });
   }
-  return { index: parseIndex(index), files, sources };
+  return { index: parseIndex(JSON.stringify(index)), files, sources };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

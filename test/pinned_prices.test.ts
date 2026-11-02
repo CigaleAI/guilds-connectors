@@ -24,7 +24,7 @@ import {
 } from "../connectors/pinned_prices/client.js";
 
 const FOLDER = fileURLToPath(new URL("../connectors/pinned_prices", import.meta.url));
-const MANIFEST: unknown = JSON.parse(readFileSync(`${FOLDER}/connector.json`, "utf8"));
+const MANIFEST = JSON.parse(readFileSync(`${FOLDER}/connector.json`, "utf8"));
 const ENTRY = folderEntry(MANIFEST, adapter, FOLDER, "guilds");
 const CONNECTORS = new ConnectorRegistry([ENTRY]);
 const SERVER = installedServer(ENTRY);
@@ -173,7 +173,7 @@ test("validate pings CoinGecko, checks every pin is quoted, and hints the coin c
   });
   assert.equal(await prices.validate(SERVER, { token: "cg" }, { coins: PINNED }), "2 coins");
   assert.deepEqual(paths, ["/api/v3/ping", "/api/v3/simple/price"]);
-  assert.equal(await prices.validate(SERVER, { token: "cg" }, { coins: [PINNED[0]] }), "1 coin");
+  assert.equal(await prices.validate(SERVER, { token: "cg" }, { coins: PINNED.slice(0, 1) }), "1 coin");
   paths.length = 0;
   assert.equal(await prices.validate(SERVER, { token: "cg" }), "");
   assert.deepEqual(paths, ["/api/v3/ping"]);
