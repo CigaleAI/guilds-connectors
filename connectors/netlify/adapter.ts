@@ -86,7 +86,7 @@ const tools: Record<string, (args: Record<string, unknown>, opts: Options, ctx: 
     }
     let folder;
     try {
-      folder = await readAgentFolder(ctx.workspace_dir, folderPath, { maxFiles: MAX_FILES, maxBytes: MAX_BYTES });
+      folder = await readAgentFolder(ctx.workspace_dir, folderPath, MAX_FILES, MAX_BYTES);
     } catch (error) {
       if (error instanceof AgentFileError) {
         throw new ConnectorError(error.message, 422);
