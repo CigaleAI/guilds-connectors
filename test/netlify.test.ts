@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { isConnectorError, type ConnectorContext } from "@guildsrun/orchestrator/connectors/types.js";
-import adapter from "../connectors/netlify/adapter.js";
+import adapter, { MAX_FILES } from "../connectors/netlify/adapter.js";
 import { deployDraft, NETLIFY_API, NetlifyError, type Deploy } from "../connectors/netlify/client.js";
 
 const SITE = { id: "site-1", name: "launch", url: "https://launch.netlify.app" };
@@ -123,6 +123,22 @@ test("deploy uploads a workspace folder as a draft, sending only the files Netli
   assert.ok(puts.includes("/deploys/deploy-1/files/index.html"));
   assert.equal(created?.headers.authorization, "Bearer nfp_test");
   assert.ok(!calls.some((call) => call.path.includes("restore")), "a deploy never goes live by itself");
+});
+
+test("deploy refuses a folder past the file limit", async () => {
+  const { http, calls } = netlify();
+  const home = path.join(mkdtempSync(path.join(tmpdir(), "guilds-netlify-")), "a_1");
+  const folder = path.join(home, "site");
+  mkdirSync(folder, { recursive: true });
+  for (let index = 0; index <= MAX_FILES; index += 1) {
+    writeFileSync(path.join(folder, `${index}.txt`), "x");
+  }
+  await refusedWith(
+    () => adapter.call!("deploy", { site: "launch", folder_path: "site" }, CREDS, context(http, { workspace_dir: home })),
+    422,
+    new RegExp(`holds more than ${MAX_FILES} files`),
+  );
+  assert.equal(calls.length, 0);
 });
 
 test("deploy refuses a site the login was not given, a folder outside the workspace, and a call from outside a run", async () => {
